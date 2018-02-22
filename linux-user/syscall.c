@@ -5140,7 +5140,7 @@ static abi_long do_ioctl_fs_ioc_fiemap(const IOCTLEntry *ie, uint8_t *buf_temp,
     if (!argptr) {
         return -TARGET_EFAULT;
     }
-    thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST);
+    thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST, 0);
     unlock_user(argptr, arg, 0);
     fm = (struct fiemap *)buf_temp;
     if (fm->fm_extent_count > FIEMAP_MAX_EXTENTS) {
@@ -5175,13 +5175,13 @@ static abi_long do_ioctl_fs_ioc_fiemap(const IOCTLEntry *ie, uint8_t *buf_temp,
             ret = -TARGET_EFAULT;
         } else {
             /* Convert the struct fiemap */
-            thunk_convert(argptr, fm, arg_type, THUNK_TARGET);
+            thunk_convert(argptr, fm, arg_type, THUNK_TARGET, 0);
             if (fm->fm_extent_count != 0) {
                 p = argptr + target_size_in;
                 /* ...and then all the struct fiemap_extents */
                 for (i = 0; i < fm->fm_mapped_extents; i++) {
                     thunk_convert(p, &fm->fm_extents[i], extent_arg_type,
-                                  THUNK_TARGET);
+                                  THUNK_TARGET, 0);
                     p += extent_size;
                 }
             }
@@ -5223,7 +5223,7 @@ static abi_long do_ioctl_ifconf(const IOCTLEntry *ie, uint8_t *buf_temp,
     argptr = lock_user(VERIFY_READ, arg, target_size, 1);
     if (!argptr)
         return -TARGET_EFAULT;
-    thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST);
+    thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST, 0);
     unlock_user(argptr, arg, 0);
 
     host_ifconf = (struct ifconf *)(unsigned long)buf_temp;
@@ -5268,7 +5268,7 @@ static abi_long do_ioctl_ifconf(const IOCTLEntry *ie, uint8_t *buf_temp,
         argptr = lock_user(VERIFY_WRITE, arg, target_size, 0);
         if (!argptr)
             return -TARGET_EFAULT;
-        thunk_convert(argptr, host_ifconf, arg_type, THUNK_TARGET);
+        thunk_convert(argptr, host_ifconf, arg_type, THUNK_TARGET, 0);
         unlock_user(argptr, arg, target_size);
 
 	/* copy ifreq[] to target user */
@@ -5277,7 +5277,7 @@ static abi_long do_ioctl_ifconf(const IOCTLEntry *ie, uint8_t *buf_temp,
         for (i = 0; i < nb_ifreq ; i++) {
             thunk_convert(argptr + i * target_ifreq_size,
                           host_ifc_buf + i * sizeof(struct ifreq),
-                          ifreq_arg_type, THUNK_TARGET);
+                          ifreq_arg_type, THUNK_TARGET, 0);
         }
         unlock_user(argptr, target_ifc_buf, target_ifc_len);
     }
@@ -5309,7 +5309,7 @@ static abi_long do_ioctl_dm(const IOCTLEntry *ie, uint8_t *buf_temp, int fd,
         ret = -TARGET_EFAULT;
         goto out;
     }
-    thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST);
+    thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST, 0);
     unlock_user(argptr, arg, 0);
 
     /* buf_temp is too small, so fetch things into a bigger buffer */
@@ -5368,7 +5368,7 @@ static abi_long do_ioctl_dm(const IOCTLEntry *ie, uint8_t *buf_temp, int fd,
             uint32_t next;
             int slen;
 
-            thunk_convert(spec, gspec, arg_type, THUNK_HOST);
+            thunk_convert(spec, gspec, arg_type, THUNK_HOST, 0);
             slen = strlen((char*)gspec + spec_size) + 1;
             next = spec->next;
             spec->next = sizeof(*spec) + slen;
@@ -5420,7 +5420,7 @@ static abi_long do_ioctl_dm(const IOCTLEntry *ie, uint8_t *buf_temp, int fd,
                     host_dm->flags |= DM_BUFFER_FULL_FLAG;
                     break;
                 }
-                thunk_convert(cur_data, nl, arg_type, THUNK_TARGET);
+                thunk_convert(cur_data, nl, arg_type, THUNK_TARGET, 0);
                 strcpy(cur_data + nl_size, nl->name);
                 cur_data += nl->next;
                 remaining_data -= nl->next;
@@ -5448,7 +5448,7 @@ static abi_long do_ioctl_dm(const IOCTLEntry *ie, uint8_t *buf_temp, int fd,
                     host_dm->flags |= DM_BUFFER_FULL_FLAG;
                     break;
                 }
-                thunk_convert(cur_data, spec, arg_type, THUNK_TARGET);
+                thunk_convert(cur_data, spec, arg_type, THUNK_TARGET, 0);
                 strcpy(cur_data + spec_size, (char*)&spec[1]);
                 cur_data = argptr + spec->next;
                 spec = (void*)host_dm + host_dm->data_start + next;
@@ -5488,7 +5488,7 @@ static abi_long do_ioctl_dm(const IOCTLEntry *ie, uint8_t *buf_temp, int fd,
                     host_dm->flags |= DM_BUFFER_FULL_FLAG;
                     break;
                 }
-                thunk_convert(cur_data, vers, arg_type, THUNK_TARGET);
+                thunk_convert(cur_data, vers, arg_type, THUNK_TARGET, 0);
                 strcpy(cur_data + vers_size, vers->name);
                 cur_data += vers->next;
                 remaining_data -= vers->next;
@@ -5511,7 +5511,7 @@ static abi_long do_ioctl_dm(const IOCTLEntry *ie, uint8_t *buf_temp, int fd,
             ret = -TARGET_EFAULT;
             goto out;
         }
-        thunk_convert(argptr, buf_temp, arg_type, THUNK_TARGET);
+        thunk_convert(argptr, buf_temp, arg_type, THUNK_TARGET, 0);
         unlock_user(argptr, arg, target_size);
     }
 out:
@@ -5539,7 +5539,7 @@ static abi_long do_ioctl_blkpg(const IOCTLEntry *ie, uint8_t *buf_temp, int fd,
         ret = -TARGET_EFAULT;
         goto out;
     }
-    thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST);
+    thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST, 0);
     unlock_user(argptr, arg, 0);
 
     switch (host_blkpg->op) {
@@ -5561,7 +5561,7 @@ static abi_long do_ioctl_blkpg(const IOCTLEntry *ie, uint8_t *buf_temp, int fd,
         ret = -TARGET_EFAULT;
         goto out;
     }
-    thunk_convert(&host_part, argptr, part_arg_type, THUNK_HOST);
+    thunk_convert(&host_part, argptr, part_arg_type, THUNK_HOST, 0);
     unlock_user(argptr, arg, 0);
 
     /* Swizzle the data pointer to our local copy and call! */
@@ -5623,7 +5623,7 @@ static abi_long do_ioctl_rt(const IOCTLEntry *ie, uint8_t *buf_temp,
         }
         field_types = thunk_convert(buf_temp + dst_offsets[i],
                                     argptr + src_offsets[i],
-                                    field_types, THUNK_HOST);
+                                    field_types, THUNK_HOST, 0);
     }
     unlock_user(argptr, arg, 0);
 
@@ -5672,6 +5672,7 @@ static abi_long do_ioctl(int fd, int cmd, abi_long arg)
     uint8_t buf_temp[MAX_STRUCT_SIZE];
     int target_size;
     void *argptr;
+    void *dstExtra;
 
     ie = ioctl_entries;
     for(;;) {
@@ -5714,7 +5715,8 @@ static abi_long do_ioctl(int fd, int cmd, abi_long arg)
                 argptr = lock_user(VERIFY_WRITE, arg, target_size, 0);
                 if (!argptr)
                     return -TARGET_EFAULT;
-                thunk_convert(argptr, buf_temp, arg_type, THUNK_TARGET);
+                dstExtra = 0;
+                thunk_convert(argptr, buf_temp, arg_type, THUNK_TARGET, &dstExtra);
                 unlock_user(argptr, arg, target_size);
             }
             break;
@@ -5722,7 +5724,8 @@ static abi_long do_ioctl(int fd, int cmd, abi_long arg)
             argptr = lock_user(VERIFY_READ, arg, target_size, 1);
             if (!argptr)
                 return -TARGET_EFAULT;
-            thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST);
+            dstExtra = buf_temp + thunk_type_size(arg_type, false);
+            thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST, &dstExtra);
             unlock_user(argptr, arg, 0);
             ret = get_errno(safe_ioctl(fd, ie->host_cmd, buf_temp));
             break;
@@ -5731,14 +5734,16 @@ static abi_long do_ioctl(int fd, int cmd, abi_long arg)
             argptr = lock_user(VERIFY_READ, arg, target_size, 1);
             if (!argptr)
                 return -TARGET_EFAULT;
-            thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST);
+            dstExtra = buf_temp + thunk_type_size(arg_type, false);
+            thunk_convert(buf_temp, argptr, arg_type, THUNK_HOST, &dstExtra);
             unlock_user(argptr, arg, 0);
             ret = get_errno(safe_ioctl(fd, ie->host_cmd, buf_temp));
             if (!is_error(ret)) {
                 argptr = lock_user(VERIFY_WRITE, arg, target_size, 0);
                 if (!argptr)
                     return -TARGET_EFAULT;
-                thunk_convert(argptr, buf_temp, arg_type, THUNK_TARGET);
+                dstExtra = 0;
+                thunk_convert(argptr, buf_temp, arg_type, THUNK_TARGET, &dstExtra);
                 unlock_user(argptr, arg, target_size);
             }
             break;

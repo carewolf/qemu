@@ -399,7 +399,7 @@ STRUCT(drm_i915_gem_create,
 
 STRUCT(drm_i915_getparam_t,
        TYPE_INT,
-       TYPE_PTRVOID
+       MK_PTR(TYPE_INT)
 )
 
 STRUCT(drm_i915_setparam_t,
@@ -632,8 +632,7 @@ STRUCT(drm_radeon_cmd_buffer_t,
        TYPE_PTRVOID
 )
 
-STRUCT(drm_radeon_texture_t,
-       TYPE_INT,
+STRUCT(drm_radeon_tex_image_t,
        TYPE_INT,
        TYPE_INT,
        TYPE_INT,
@@ -641,8 +640,17 @@ STRUCT(drm_radeon_texture_t,
        TYPE_PTRVOID
 )
 
+STRUCT(drm_radeon_texture_t,
+       TYPE_INT,
+       TYPE_INT,
+       TYPE_INT,
+       TYPE_INT,
+       TYPE_INT,
+       MK_PTR(MK_STRUCT(STRUCT_drm_radeon_tex_image_t))
+)
+
 STRUCT(drm_radeon_stipple_t,
-       TYPE_PTRVOID
+       MK_PTR(TYPE_INT)
 )
 
 STRUCT(drm_radeon_indirect_t,
@@ -661,7 +669,7 @@ STRUCT(drm_radeon_mem_alloc_t,
        TYPE_INT,
        TYPE_INT,
        TYPE_INT,
-       TYPE_PTRVOID
+       MK_PTR(TYPE_INT)
 )
 
 STRUCT(drm_radeon_mem_free_t,
@@ -676,7 +684,7 @@ STRUCT(drm_radeon_mem_init_heap_t,
 )
 
 STRUCT(drm_radeon_irq_emit_t,
-       TYPE_PTRVOID
+       MK_PTR(TYPE_INT)
 )
 
 STRUCT(drm_radeon_irq_wait_t,

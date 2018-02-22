@@ -122,12 +122,47 @@ void thunk_register_struct_direct(int id, const char *name,
     se->name = name;
 }
 
+static void convert_long(void *dst, const void *src, bool to_host, bool sign_extend)
+{
+#if HOST_LONG_BITS == 32 && TARGET_ABI_BITS == 32
+    *(uint32_t *)dst = tswap32(*(uint32_t *)src);
+#elif HOST_LONG_BITS == 64 && TARGET_ABI_BITS == 32
+    if (to_host) {
+        if (sign_extend)
+            *(uint64_t *)dst = (int32_t)tswap32(*(uint32_t *)src);
+        else
+            *(uint64_t *)dst = tswap32(*(uint32_t *)src);
+    } else {
+        if ((*(uint64_t *)src & 0xffffffff) != *(uint64_t *)src)
+            gemu_log("qemu: Failed to convert long or pointer to 32bit: %#lx\n", *(unsigned long *)src);
+        *(uint32_t *)dst = tswap32(*(uint64_t *)src & 0xffffffff);
+    }
+#elif HOST_LONG_BITS == 64 && TARGET_ABI_BITS == 64
+    *(uint64_t *)dst = tswap64(*(uint64_t *)src);
+#elif HOST_LONG_BITS == 32 && TARGET_ABI_BITS == 64
+    if (to_host) {
+        uint64_t swapped_src = tswap64(*(uint64_t *)src);
+        if ((uint64_t)(uint32_t)swapped_src != swapped_src)
+            gemu_log("qemu: Failed to convert long or pointer to 32bit: %#lx\n", swapped_src);
+        *(uint32_t *)dst = swapped_src;
+    } else {
+        if (sign_extend)
+            *(uint64_t *)dst = tswap64(*(int32_t *)src);
+        else
+            *(uint64_t *)dst = tswap64(*(uint32_t *)src);
+    }
+#else
+#warning unsupported conversion
+#endif
+}
 
 /* now we can define the main conversion functions */
 const argtype *thunk_convert(void *dst, const void *src,
-                             const argtype *type_ptr, int to_host)
+                             const argtype *type_ptr, int to_host, void **dstExtra)
 {
     int type;
+    void *ptr_dst;
+    const void *ptr_src;
 
     type = *type_ptr++;
     switch(type) {
@@ -144,51 +179,42 @@ const argtype *thunk_convert(void *dst, const void *src,
     case TYPE_ULONGLONG:
         *(uint64_t *)dst = tswap64(*(uint64_t *)src);
         break;
-#if HOST_LONG_BITS == 32 && TARGET_ABI_BITS == 32
-    case TYPE_LONG:
-    case TYPE_ULONG:
-    case TYPE_PTRVOID:
-        *(uint32_t *)dst = tswap32(*(uint32_t *)src);
-        break;
-#elif HOST_LONG_BITS == 64 && TARGET_ABI_BITS == 32
-    case TYPE_LONG:
-    case TYPE_ULONG:
-    case TYPE_PTRVOID:
-        if (to_host) {
-            if (type == TYPE_LONG) {
-                /* sign extension */
-                *(uint64_t *)dst = (int32_t)tswap32(*(uint32_t *)src);
+    case TYPE_PTR:
+        if (*type_ptr != TYPE_NULL && *type_ptr != TYPE_CHAR) {
+            // The data pointed to needs conversion
+            assert(dstExtra);
+            // Note this only handles a single element, pointers to variable length arrays
+            // need manual conversion.
+            if (*dstExtra) {
+                ptr_dst = *dstExtra;
+                *dstExtra += thunk_type_size(type_ptr, to_host);
             } else {
-                *(uint64_t *)dst = tswap32(*(uint32_t *)src);
+                // This is a read into target pointer, so convert into the pointer given us.
+                assert(!to_host);
+                convert_long((void *)&ptr_dst, dst, true, false);
             }
-        } else {
-            *(uint32_t *)dst = tswap32(*(uint64_t *)src & 0xffffffff);
-        }
-        break;
-#elif HOST_LONG_BITS == 64 && TARGET_ABI_BITS == 64
-    case TYPE_LONG:
-    case TYPE_ULONG:
-    case TYPE_PTRVOID:
-        *(uint64_t *)dst = tswap64(*(uint64_t *)src);
-        break;
-#elif HOST_LONG_BITS == 32 && TARGET_ABI_BITS == 64
-    case TYPE_LONG:
-    case TYPE_ULONG:
-    case TYPE_PTRVOID:
-        if (to_host) {
-            *(uint32_t *)dst = tswap64(*(uint64_t *)src);
-        } else {
-            if (type == TYPE_LONG) {
-                /* sign extension */
-                *(uint64_t *)dst = tswap64(*(int32_t *)src);
+            if (to_host) {
+                convert_long((void *)&ptr_src, src, true, false);
             } else {
-                *(uint64_t *)dst = tswap64(*(uint32_t *)src);
+                ptr_src = *(const void **)src;
             }
+            type_ptr = thunk_convert(ptr_dst, ptr_src, type_ptr, to_host, dstExtra);
+            if (to_host) {
+                *(void **)dst = ptr_dst;
+            } else if (*dstExtra) {
+                convert_long(dst, ptr_dst, false, false);
+            } else {
+                // No need, this was a read and we are leaving the pointer unchanged
+            }
+            break;
         }
+        type_ptr = thunk_type_next(type_ptr);
+        // fall-through on void and char pointers.
+    case TYPE_LONG:
+    case TYPE_ULONG:
+    case TYPE_PTRVOID:
+        convert_long(dst, src, to_host, type == TYPE_LONG);
         break;
-#else
-#warning unsupported conversion
-#endif
     case TYPE_OLDDEVT:
     {
         uint64_t val = 0;
@@ -228,7 +254,7 @@ const argtype *thunk_convert(void *dst, const void *src,
             d = dst;
             s = src;
             for(i = 0;i < array_length; i++) {
-                thunk_convert(d, s, type_ptr, to_host);
+                thunk_convert(d, s, type_ptr, to_host, dstExtra);
                 d += dst_size;
                 s += src_size;
             }
@@ -259,7 +285,7 @@ const argtype *thunk_convert(void *dst, const void *src,
                 for(i = 0;i < se->nb_fields; i++) {
                     field_types = thunk_convert(d + dst_offsets[i],
                                                 s + src_offsets[i],
-                                                field_types, to_host);
+                                                field_types, to_host, dstExtra);
                 }
             }
         }
