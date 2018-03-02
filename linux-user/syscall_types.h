@@ -366,6 +366,13 @@ STRUCT(drm_prime_handle,
        TYPE_INT
 )
 
+STRUCT(drm_clip_rect,
+       TYPE_SHORT,
+       TYPE_SHORT,
+       TYPE_SHORT,
+       TYPE_SHORT
+)
+
 STRUCT(drm_i915_init_t,
        TYPE_INT, /*func*/
        TYPE_INT, /*mmio_offset*/
@@ -399,7 +406,8 @@ STRUCT(drm_i915_gem_create,
 
 STRUCT(drm_i915_getparam_t,
        TYPE_INT,
-       MK_PTR(TYPE_INT)
+       TYPE_PTRVOID
+//        MK_PTR(TYPE_INT)
 )
 
 STRUCT(drm_i915_setparam_t,
@@ -416,6 +424,15 @@ STRUCT(drm_i915_gem_execbuffer,
        TYPE_INT,
        TYPE_INT,
        TYPE_ULONGLONG
+)
+
+STRUCT(drm_i915_gem_relocation_entry,
+       TYPE_INT,
+       TYPE_INT,
+       TYPE_ULONGLONG,
+       TYPE_ULONGLONG,
+       TYPE_INT,
+       TYPE_INT
 )
 
 STRUCT(drm_i915_gem_exec_object2,

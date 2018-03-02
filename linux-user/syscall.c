@@ -5572,6 +5572,7 @@ out:
     return ret;
 }
 
+
 static abi_long do_ioctl_rt(const IOCTLEntry *ie, uint8_t *buf_temp,
                                 int fd, int cmd, abi_long arg)
 {
@@ -5651,6 +5652,232 @@ static abi_long do_ioctl_tiocgptpeer(const IOCTLEntry *ie, uint8_t *buf_temp,
 }
 #endif
 
+#if defined(CONFIG_LIBDRM)
+
+static abi_long do_ioctl_i915_getparam(const IOCTLEntry *ie, uint8_t *buf_temp,
+                                       int fd, int cmd, abi_long arg)
+{
+    const argtype *arg_type = ie->arg_type;
+    abi_long ret;
+    int target_size;
+    void *argptr;
+    void *argvalueptr;
+    abi_ulong src_value_ptr;
+    int *src_value_ptr_locked;
+    int host_value;
+
+    drm_i915_getparam_t args;
+
+    assert(arg_type[0] == TYPE_PTR);
+    arg_type++;
+    target_size = thunk_type_size(arg_type, 0);
+
+    argptr = lock_user(VERIFY_READ, arg, target_size, 1);
+    if (!argptr)
+        return -TARGET_EFAULT;
+
+    assert(arg_type[0] == TYPE_STRUCT);
+    args.param = tswap32(*(uint32_t *)argptr);
+
+    args.value = &host_value;
+
+    argvalueptr = (void*)(((uintptr_t)argptr + 4 + (TARGET_ABI_BITS / 8) - 1) & ~((TARGET_ABI_BITS / 8) - 1));
+#if HOST_LONG_BITS == 32 && TARGET_ABI_BITS == 32
+    *(uint32_t *)&src_value_ptr = tswap32(*(uint32_t *)argvalueptr);
+#elif HOST_LONG_BITS == 64 && TARGET_ABI_BITS == 32
+    *(uint64_t *)&src_value_ptr = tswap32(*(uint32_t *)argvalueptr);
+#elif HOST_LONG_BITS == 64 && TARGET_ABI_BITS == 64
+    *(uint64_t *)&src_value_ptr = tswap64(*(uint64_t *)argvalueptr);
+#elif HOST_LONG_BITS == 32 && TARGET_ABI_BITS == 64
+    *(uint32_t *)&src_value_ptr = tswap64(*(uint64_t *)argvalueptr);
+#endif
+    unlock_user(argptr, arg, 0);
+    src_value_ptr_locked = lock_user(VERIFY_READ, src_value_ptr, 4, 1);
+    host_value = tswap32(*(uint32_t *)src_value_ptr_locked);
+    unlock_user(src_value_ptr_locked, src_value_ptr, 4);
+    ret = get_errno(safe_ioctl(fd, DRM_IOCTL_I915_GETPARAM, &args));
+    if (!is_error(ret)) {
+//         if (args.param == I915_PARAM_HAS_ALIASING_PPGTT)
+//             host_value = 0;
+//         if (args.param == I915_PARAM_MMAP_GTT_VERSION)
+//             return -TARGET_EFAULT;
+//             host_value = 1;
+        if (args.param == I915_PARAM_HAS_EXECBUF2)
+            return -TARGET_EFAULT;
+        argptr = lock_user(VERIFY_WRITE, arg, target_size, 0);
+        if (!argptr)
+            return -TARGET_EFAULT;
+        *(uint32_t *)argptr = tswap32(args.param);
+        unlock_user(argptr, arg, target_size);
+        src_value_ptr_locked = lock_user(VERIFY_WRITE, src_value_ptr, 4, 0);
+        if (!src_value_ptr_locked)
+            return -TARGET_EFAULT;
+        *src_value_ptr_locked = tswap32(*(uint32_t *)&host_value);
+        unlock_user(src_value_ptr_locked, src_value_ptr, 4);
+    }
+    gemu_log("do_ioctl_i915_getparam %ld: %d=%d\n", (long)ret, args.param, host_value);
+    return ret;
+}
+
+static abi_long do_ioctl_i915_gem_mmap_gtt(const IOCTLEntry *ie, uint8_t *buf_temp,
+                                           int fd, int cmd, abi_long arg)
+{
+    gemu_log("do_ioctl_i915_gem_mmap_gtt\n");
+    const argtype *arg_type = ie->arg_type;
+    abi_long ret;
+    int target_size;
+    void *argptr;
+
+    struct drm_i915_gem_mmap_gtt args;
+
+    assert(arg_type[0] == TYPE_PTR);
+    arg_type++;
+    target_size = thunk_type_size(arg_type, 0);
+
+    argptr = lock_user(VERIFY_READ, arg, target_size, 1);
+    if (!argptr)
+        return -TARGET_EFAULT;
+
+    assert(arg_type[0] == TYPE_STRUCT);
+    args.handle = tswap32(*(uint32_t *)argptr);
+    args.pad = tswap32(*(uint32_t *)(argptr + 4));
+    args.offset = tswap64(*(uint64_t *)(argptr + 8));
+
+    unlock_user(argptr, arg, 0);
+    ret = get_errno(safe_ioctl(fd, DRM_IOCTL_I915_GEM_MMAP_GTT, &args));
+    gemu_log("offset:0x%08lx\n", (unsigned long)args.offset);
+//     args.offset = args.offset & 0xffffffff;
+    if (!is_error(ret)) {
+        argptr = lock_user(VERIFY_WRITE, arg, target_size, 0);
+        if (!argptr)
+            return -TARGET_EFAULT;
+        *(uint32_t *)argptr = tswap32(args.handle);
+        *(uint32_t *)(argptr + 4) = tswap32(args.pad);
+        *(uint64_t *)(argptr + 8) = tswap64(args.offset);
+        unlock_user(argptr, arg, target_size);
+    }
+    gemu_log("return do_ioctl_i915_gem_mmap_gtt\n");
+    return ret;
+}
+
+static abi_long do_ioctl_i915_gem_execbuffer2(const IOCTLEntry *ie, uint8_t *buf_temp,
+                                              int fd, int cmd, abi_long arg)
+{
+    gemu_log("do_ioctl_i915_execbuffer2\n");
+    const argtype *arg_type = ie->arg_type;
+    abi_long ret;
+    int target_size;
+    void *argptr;
+    abi_ulong src_buffers_ptr = 0;
+    abi_ulong src_cliprects_ptr = 0;
+    struct drm_i915_gem_exec_object2 *src_buffers_ptr_locked;
+    struct drm_clip_rect *src_cliprects_ptr_locked;
+
+    struct drm_i915_gem_execbuffer2 args;
+
+    assert(arg_type[0] == TYPE_PTR);
+    arg_type++;
+    assert(arg_type[0] == TYPE_STRUCT);
+    target_size = thunk_type_size(arg_type, 0);
+
+    argptr = lock_user(VERIFY_READ, arg, target_size, 1);
+    if (!argptr)
+        return -TARGET_EFAULT;
+
+    struct drm_i915_gem_execbuffer2 *target_args = (struct drm_i915_gem_execbuffer2 *)argptr;
+
+    // convert things that are not pointers to variable length arrays
+    args.buffer_count = tswap32(target_args->buffer_count);
+    args.batch_start_offset = tswap32(target_args->batch_start_offset);
+    args.batch_len = tswap32(target_args->batch_len);
+    args.DR1 = tswap32(target_args->DR1);
+    args.DR4 = tswap32(target_args->DR4);
+    args.num_cliprects = tswap32(target_args->num_cliprects);
+    args.flags = tswap64(target_args->flags);
+    args.rsvd1 = tswap64(target_args->rsvd1);
+    args.rsvd2 = tswap64(target_args->rsvd2);
+
+    gemu_log("cliprects=%d, buffer_count=%d\n", args.num_cliprects, args.buffer_count);
+
+//     args.buffers_ptr = target_args->buffers_ptr;
+//     args.cliprects_ptr = target_args->cliprects_ptr;
+
+    args.buffers_ptr = (uintptr_t)malloc(sizeof(struct drm_i915_gem_exec_object2) * args.buffer_count);
+    src_buffers_ptr = tswap64(target_args->buffers_ptr);
+    if (args.num_cliprects) {
+        args.cliprects_ptr = (uintptr_t)malloc(sizeof(struct drm_clip_rect) * args.num_cliprects);
+        src_cliprects_ptr = tswap64(target_args->cliprects_ptr);
+    } else
+        args.cliprects_ptr = 0;
+
+    unlock_user(argptr, arg, 0);
+
+    src_buffers_ptr_locked = lock_user(VERIFY_READ, src_buffers_ptr, sizeof(struct drm_i915_gem_exec_object2) * args.buffer_count, 0);
+    if (args.num_cliprects)
+        src_cliprects_ptr_locked = lock_user(VERIFY_READ, src_cliprects_ptr, sizeof(struct drm_clip_rect) * args.num_cliprects, 0);
+
+    for (int i = 0; i < args.num_cliprects; ++i) {
+        struct drm_clip_rect *dst_cliprects_ptr = ((struct drm_clip_rect *)(uintptr_t)args.cliprects_ptr) + i;
+        dst_cliprects_ptr->x1 = tswap16(src_cliprects_ptr_locked[i].x1);
+        dst_cliprects_ptr->y1 = tswap16(src_cliprects_ptr_locked[i].y1);
+        dst_cliprects_ptr->x2 = tswap16(src_cliprects_ptr_locked[i].x2);
+        dst_cliprects_ptr->y2 = tswap16(src_cliprects_ptr_locked[i].y2);
+    }
+
+    for (int i = 0; i < args.buffer_count; ++i) {
+        abi_ulong src_relocs_ptr = 0;
+        struct drm_i915_gem_relocation_entry *src_relocs_ptr_locked;
+
+        struct drm_i915_gem_exec_object2 *object = ((struct drm_i915_gem_exec_object2 *)(uintptr_t)args.buffers_ptr) + i;
+        object->handle = tswap32(src_buffers_ptr_locked[i].handle);
+        object->relocation_count = tswap32(src_buffers_ptr_locked[i].relocation_count);
+        object->alignment = tswap64(src_buffers_ptr_locked[i].alignment);
+        object->offset = tswap64(src_buffers_ptr_locked[i].offset);
+        object->flags = tswap64(src_buffers_ptr_locked[i].flags);
+        object->rsvd1 = tswap64(src_buffers_ptr_locked[i].rsvd1);
+        object->rsvd2 = tswap64(src_buffers_ptr_locked[i].rsvd2);
+//         object->relocs_ptr = src_buffers_ptr_locked[i].relocs_ptr;
+
+//         gemu_log("relocations=%d\n", object->relocation_count);
+        if (object->relocation_count > 0) {
+            object->relocs_ptr = (uintptr_t)malloc(sizeof(struct drm_i915_gem_relocation_entry) * object->relocation_count);
+            src_relocs_ptr = tswap64(src_buffers_ptr_locked[i].relocs_ptr);
+            src_relocs_ptr_locked = lock_user(VERIFY_READ, src_relocs_ptr, sizeof(struct drm_i915_gem_relocation_entry) * object->relocation_count, 0);
+            for (int j = 0; j < object->relocation_count; ++j) {
+                struct drm_i915_gem_relocation_entry *dst_entry = ((struct drm_i915_gem_relocation_entry *)(uintptr_t)object->relocs_ptr) + j;
+                struct drm_i915_gem_relocation_entry *src_entry = ((struct drm_i915_gem_relocation_entry *)(uintptr_t)src_relocs_ptr_locked) + j;
+                dst_entry->target_handle = tswap32(src_entry->target_handle);
+                dst_entry->delta = tswap32(src_entry->delta);
+                dst_entry->offset = tswap64(src_entry->offset);
+                dst_entry->presumed_offset = tswap64(src_entry->presumed_offset);
+                dst_entry->read_domains = tswap32(src_entry->read_domains);
+                dst_entry->write_domain = tswap32(src_entry->write_domain);
+            }
+            unlock_user(src_relocs_ptr_locked, src_relocs_ptr, sizeof(struct drm_i915_gem_relocation_entry) * object->relocation_count);
+        } else {
+            object->relocs_ptr = 0;
+        }
+    }
+
+    unlock_user(src_buffers_ptr_locked, src_buffers_ptr, sizeof(struct drm_i915_gem_exec_object2) * args.buffer_count);
+    if (args.num_cliprects)
+        unlock_user(src_cliprects_ptr_locked, src_cliprects_ptr, sizeof(struct drm_clip_rect) * args.num_cliprects);
+    ret = get_errno(safe_ioctl(fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, &args));
+
+    for (int i = 0; i < args.buffer_count; ++i) {
+        struct drm_i915_gem_exec_object2 *object = ((struct drm_i915_gem_exec_object2 *)(uintptr_t)args.buffers_ptr) + i;
+        if (object->relocation_count)
+            free((void*)(uintptr_t)object->relocs_ptr);
+    }
+    free((void*)(uintptr_t)args.buffers_ptr);
+    if (args.num_cliprects)
+        free((void*)(uintptr_t)args.cliprects_ptr);
+
+    gemu_log("return do_ioctl_i915_execbuffer2\n");
+    return ret;
+}
+#endif
+
 static IOCTLEntry ioctl_entries[] = {
 #define IOCTL(cmd, access, ...) \
     { TARGET_ ## cmd, cmd, #cmd, access, 0, {  __VA_ARGS__ } },
@@ -5661,6 +5888,7 @@ static IOCTLEntry ioctl_entries[] = {
 #include "ioctls.h"
     { 0, 0, },
 };
+
 
 /* ??? Implement proper locking for ioctls.  */
 /* do_ioctl() Must return target values and target errnos. */
@@ -5677,16 +5905,19 @@ static abi_long do_ioctl(int fd, int cmd, abi_long arg)
     ie = ioctl_entries;
     for(;;) {
         if (ie->target_cmd == 0) {
-            gemu_log("Unsupported ioctl: cmd=0x%04lx\n", (long)cmd);
+            gemu_log("Unsupported ioctl: cmd=0x%04lx\n", (unsigned long)cmd);
             return -TARGET_ENOSYS;
         }
         if (ie->target_cmd == cmd)
             break;
+//         if ((ie->target_cmd & 0xffff) == (cmd & 0xffff)) {
+//             gemu_log("Partial match: 0x%04lx 0x%04lx\n", (unsigned long)cmd, (unsigned long)ie->target_cmd);
+//         }
         ie++;
     }
     arg_type = ie->arg_type;
-#if defined(DEBUG)
-    gemu_log("ioctl: cmd=0x%04lx (%s)\n", (long)cmd, ie->name);
+#if defined(DEBUG) || 1
+    gemu_log("ioctl: cmd=0x%04lx (%s)\n", (unsigned long)cmd, ie->name);
 #endif
     if (ie->do_ioctl) {
         return ie->do_ioctl(ie, buf_temp, fd, cmd, arg);
@@ -5755,6 +5986,7 @@ static abi_long do_ioctl(int fd, int cmd, abi_long arg)
         ret = -TARGET_ENOSYS;
         break;
     }
+//     gemu_log("return ioctl: cmd=0x%04lx (%s)\n", (unsigned long)cmd, ie->name);
     return ret;
 }
 

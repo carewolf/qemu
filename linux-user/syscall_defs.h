@@ -126,6 +126,10 @@
 #define TARGET_IOW(type,nr,size)	TARGET_IOC(TARGET_IOC_WRITE,(type),(nr),sizeof(size))
 #define TARGET_IOWR(type,nr,size)	TARGET_IOC(TARGET_IOC_READ|TARGET_IOC_WRITE,(type),(nr),sizeof(size))
 
+#define TARGET_IOR_S(type,nr,size)	TARGET_IOC(TARGET_IOC_READ,(type),(nr),size)
+#define TARGET_IOW_S(type,nr,size)	TARGET_IOC(TARGET_IOC_WRITE,(type),(nr),size)
+#define TARGET_IOWR_S(type,nr,size)	TARGET_IOC(TARGET_IOC_READ|TARGET_IOC_WRITE,(type),(nr),size)
+
 /* the size is automatically computed for these defines */
 #define TARGET_IORU(type,nr)	TARGET_IOC(TARGET_IOC_READ,(type),(nr),TARGET_IOC_SIZEMASK)
 #define TARGET_IOWU(type,nr)	TARGET_IOC(TARGET_IOC_WRITE,(type),(nr),TARGET_IOC_SIZEMASK)
@@ -2949,13 +2953,16 @@ struct target_user_cap_data {
 /* Return size of the log buffer */
 #define TARGET_SYSLOG_ACTION_SIZE_BUFFER   10
 
-#ifdef CONFIG_LIBDRM
+#if defined(CONFIG_LIBDRM)
 
 #define TARGET_DRM_IOCTL_BASE       'd'
 #define TARGET_DRM_IO(nr)           TARGET_IO(TARGET_DRM_IOCTL_BASE,nr)
 #define TARGET_DRM_IOR(nr,type)     TARGET_IOR(TARGET_DRM_IOCTL_BASE,nr,type)
 #define TARGET_DRM_IOW(nr,type)     TARGET_IOW(TARGET_DRM_IOCTL_BASE,nr,type)
 #define TARGET_DRM_IOWR(nr,type)    TARGET_IOWR(TARGET_DRM_IOCTL_BASE,nr,type)
+#define TARGET_DRM_IOR_S(nr,size)     TARGET_IOR_S(TARGET_DRM_IOCTL_BASE,nr,size)
+#define TARGET_DRM_IOW_S(nr,size)     TARGET_IOW_S(TARGET_DRM_IOCTL_BASE,nr,size)
+#define TARGET_DRM_IOWR_S(nr,size)    TARGET_IOWR_S(TARGET_DRM_IOCTL_BASE,nr,size)
 
 #define TARGET_DRM_IOCTL_VERSION        TARGET_DRM_IOWR(0x00, struct drm_version)
 #define TARGET_DRM_IOCTL_GET_UNIQUE     TARGET_DRM_IOWR(0x01, struct drm_unique)
@@ -2988,7 +2995,11 @@ struct target_user_cap_data {
 #define TARGET_DRM_IOCTL_I915_BATCHBUFFER       TARGET_DRM_IOW( 0x43, drm_i915_batchbuffer_t)
 #define TARGET_DRM_IOCTL_I915_IRQ_EMIT          TARGET_DRM_IOWR(0x44, drm_i915_irq_emit_t)
 #define TARGET_DRM_IOCTL_I915_IRQ_WAIT          TARGET_DRM_IOW( 0x45, drm_i915_irq_wait_t)
-#define TARGET_DRM_IOCTL_I915_GETPARAM          TARGET_DRM_IOWR(0x46, drm_i915_getparam_t)
+#if TARGET_ABI_BITS == 32
+#define TARGET_DRM_IOCTL_I915_GETPARAM          TARGET_DRM_IOWR_S(0x46, 8)
+#else
+#define TARGET_DRM_IOCTL_I915_GETPARAM          TARGET_DRM_IOWR_S(0x46, 16)
+#endif
 #define TARGET_DRM_IOCTL_I915_SETPARAM          TARGET_DRM_IOW( 0x47, drm_i915_setparam_t)
 #define TARGET_DRM_IOCTL_I915_ALLOC             TARGET_DRM_IOWR(0x48, drm_i915_mem_alloc_t)
 #define TARGET_DRM_IOCTL_I915_FREE              TARGET_DRM_IOW( 0x49, drm_i915_mem_free_t)
